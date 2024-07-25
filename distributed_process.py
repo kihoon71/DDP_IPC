@@ -37,25 +37,26 @@ class DistributedProcess(object):
                     conn, addr = s.accept()
                     with conn:
                         self.logger.info(f"Connected by {addr}")
-                        data = conn.recv(1024)
-                        self.logger.info(f"Received data: {data}")
-                        if not data:
-                            break
-                        if data[0:1] == b'0':
-                            self.network = self.decode_protocol(data[1:])
-                            self.logger.info(f"Received network from {addr}, network : \n{self.network}")
-                            conn.send(b"1")
-                        elif data[0:1] == b'1':
-                            self.logger.info(f"Received data chunk from {addr}")
-                            recv_data = self.decode_protocol()
-                            result_forward = self.forward_datachunk(recv_data)
-                            conn.sendall(result_forward)
-                        elif data[0:1] == ord('2'):
-                            self.logger.info(f"Received reduction data from {addr}")
-                            self.reduction_data = np.frombuffer(data[1:], dtype=np.float32)
-                            conn.send(b"1")
-                        else:
-                            conn.send(b"2")
+                        while True:
+                            data = conn.recv(1024)
+                            self.logger.info(f"Received data: {data}")
+                            if not data:
+                                break
+                            if data[0:1] == b'0':
+                                self.network = self.decode_protocol(data[1:])
+                                self.logger.info(f"Received network from {addr}, network : \n{self.network}")
+                                conn.send(b"1")
+                            elif data[0:1] == b'1':
+                                self.logger.info(f"Received data chunk from {addr}")
+                                self.input_datachunk = self.decode_protocol(data[1:])
+                                result_forward = self.forward_datachunk()
+                                conn.sendall(result_forward)
+                            elif data[0:1] == ord('2'):
+                                self.logger.info(f"Received reduction data from {addr}")
+                                self.reduction_data = np.frombuffer(data[1:], dtype=np.float32)
+                                conn.send(b"1")
+                            else:
+                                conn.send(b"2")
         except Exception as e:
             self.logger.error(f"Exception: {traceback.format_exc()}")
 
@@ -67,8 +68,7 @@ class DistributedProcess(object):
         self.logger.info(f"buffer_array_data : \n {buffer_array_data}")
         return buffer_array_data
 
-    def forward_datachunk(self, recv_data):
-
+    def forward_datachunk(self):
         result_forward = np.dot(self.input_datachunk, self.network)
         return result_forward.tobytes()
 

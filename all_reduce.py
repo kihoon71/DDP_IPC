@@ -16,11 +16,16 @@ class AllReduce(object):
         self.start_port = start_port
         self.pids = []
 
-        self.selector = None
-    
+        # self.selector = None
+        self.selector = selectors.DefaultSelector()
+
         # data for communication
         self.own_chunk = None
         self.own_network = None
+        self.forward_data = []
+
+        # shape for the chunk
+        self.shape = None
 
     def __del__(self):
         print(f"pid : {self.pids}")
@@ -34,9 +39,9 @@ class AllReduce(object):
             self.pids.append(sub.pid)
 
     def start_connections(self):
-        if self.selector:  # Ensure the previous selector is closed properly
-            self.selector.close()
-        self.selector = selectors.DefaultSelector()
+        # if self.selector:  # Ensure the previous selector is closed properly
+        #     self.selector.close()
+        # self.selector = selectors.DefaultSelector()
         for connid in range(1, self.num_proc):
             server_addr = (self.host, self.start_port + connid)
             print(f"Starting connection {connid} to {server_addr}")
@@ -79,6 +84,10 @@ class AllReduce(object):
                 self.selector.unregister(sock)
                 sock.close()
 
+            if not recv_data:
+                print(f"Closing connection {data.connid}")
+                self.selector.unregister(sock)
+                sock.close()
         if mask & selectors.EVENT_WRITE:
             if not data.outb and data.messages:
                 data.outb = data.messages.pop(0)
