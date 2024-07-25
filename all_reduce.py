@@ -23,6 +23,7 @@ class AllReduce(object):
         self.own_chunk = None
         self.own_network = None
         self.forward_data = []
+        self.reduction_result = None
 
         # shape for the chunk
         self.shape = None
@@ -39,9 +40,7 @@ class AllReduce(object):
             self.pids.append(sub.pid)
 
     def start_connections(self):
-        # if self.selector:  # Ensure the previous selector is closed properly
-        #     self.selector.close()
-        # self.selector = selectors.DefaultSelector()
+        
         for connid in range(1, self.num_proc):
             server_addr = (self.host, self.start_port + connid)
             print(f"Starting connection {connid} to {server_addr}")
@@ -80,7 +79,10 @@ class AllReduce(object):
                 sock.close()
 
             if len(recv_data) > 1:
-                print(f"[Scatter] success, {recv_data} from connection {data.connid}")
+                print(f"[Scatter] success, {len(recv_data)} from connection {data.connid}")
+                forward_result_data = np.frombuffer(recv_data, dtype='float32')
+                forward_result_data = forward_result_data.reshape(self.shape)
+                self.forward_data.append(forward_result_data)
                 self.selector.unregister(sock)
                 sock.close()
 
@@ -92,7 +94,7 @@ class AllReduce(object):
             if not data.outb and data.messages:
                 data.outb = data.messages.pop(0)
             if data.outb:
-                print(f"Sending {data.outb} to connection {data.connid}")
+                print(f"Sending {len(data.outb)} to connection {data.connid}")
                 sent = sock.send(data.outb)
                 data.outb = data.outb[sent:]
 
@@ -119,13 +121,13 @@ class AllReduce(object):
             print("[Closed] selector is closed")
             # self.selector.close()
 
-    def broadcast(self, data):
+    def broadcast(self, data, type_):
 
         self.start_connections()
         self.own_network = data
 
-        data = data.tobytes()
-        protocol = self.make_protocol(data, 0)
+        byte_data = data.tobytes()
+        protocol = self.make_protocol(byte_data, type_, size=data.shape)
 
         # print("length of selector :", len(self.selector.get_map().values()))
 
@@ -156,8 +158,17 @@ class AllReduce(object):
 
         self.conmmunication_loop()
 
-    def allreduce(self, data):
-        pass
+
+    # 실제 reduction 연산의 대상은 forwardpass 이후의 loss 값이다. 여기서는 간단하게 내적 연산으로 대체한다.
+    def reduction_op(self):
+
+        #own data result
+        master_forward = np.dot(self.own_chunk, self.own_network)
+        master_forward = master_forward.astype('float32')
+        self.forward_data.append(master_forward)
+
+        self.reduction_result = np.mean(self.forward_data, axis=0)
+        return self.reduction_result
 
     def make_protocol(self, data, type_,size=(4,4)):
         type_ = str(type_).encode()
@@ -177,13 +188,20 @@ def main():
 
     # broadcast nueral network
     network = np.random.random((4,4)).astype('float32')
-    all_reduce.broadcast(network)
+    all_reduce.broadcast(network, type_=0)
 
     time.sleep(1)
 
     # scatter the batch data
     batch = np.random.random((15, 4, 4)).astype('float32')
     all_reduce.scatter(batch)
+
+    # all_reduce the batchdata
+    reduction_loss_value = all_reduce.reduction_op()
+    all_reduce.broadcast(reduction_loss_value, type_=2)
+    print("[Reduction] result of reduction op is broadcasted")
+
+    time.sleep(2)
 
 if __name__ == "__main__":
     main()

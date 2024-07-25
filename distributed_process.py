@@ -51,12 +51,11 @@ class DistributedProcess(object):
                                 self.input_datachunk = self.decode_protocol(data[1:])
                                 result_forward = self.forward_datachunk()
                                 conn.sendall(result_forward)
-                            elif data[0:1] == ord('2'):
+                            elif data[0:1] == b'2':
                                 self.logger.info(f"Received reduction data from {addr}")
-                                self.reduction_data = np.frombuffer(data[1:], dtype=np.float32)
+                                self.reduction_data = self.decode_protocol(data[1:])
+                                self.logger.info(f"Reduction Data : \n{self.reduction_data}")
                                 conn.send(b"1")
-                            else:
-                                conn.send(b"2")
         except Exception as e:
             self.logger.error(f"Exception: {traceback.format_exc()}")
 
@@ -70,7 +69,11 @@ class DistributedProcess(object):
 
     def forward_datachunk(self):
         result_forward = np.dot(self.input_datachunk, self.network)
-        return result_forward.tobytes()
+        result_forward = result_forward.astype('float32')
+        self.logger.info(f"shape : {result_forward.shape}")
+        result_forward = result_forward.tobytes()
+        self.logger.info(f"bytes_length : {len(result_forward)}")
+        return result_forward
 
 if __name__ == "__main__":
     host, port = sys.argv[1], int(sys.argv[2])
