@@ -30,7 +30,7 @@ class AllReduce(object):
 
     def __del__(self):
         print(f"pid : {self.pids}")
-        time.sleep(2)
+        self.selector.close()
         for pid in self.pids:
             os.kill(pid, signal.SIGINT)
 
@@ -90,6 +90,7 @@ class AllReduce(object):
                 print(f"Closing connection {data.connid}")
                 self.selector.unregister(sock)
                 sock.close()
+
         if mask & selectors.EVENT_WRITE:
             if not data.outb and data.messages:
                 data.outb = data.messages.pop(0)
@@ -118,7 +119,7 @@ class AllReduce(object):
             print("ERROR occurred")
             print(traceback.format_exc())
         finally:
-            print("[Closed] selector is closed")
+            print("[info] this communication is done")
             # self.selector.close()
 
     def broadcast(self, data, type_):
@@ -202,6 +203,11 @@ def main():
     print("[Reduction] result of reduction op is broadcasted")
 
     time.sleep(2)
+    # quit all the process
+    quit_signal = np.array([])
+    all_reduce.broadcast(quit_signal, type_=3)
+
+    time.sleep(3)
 
 if __name__ == "__main__":
     main()

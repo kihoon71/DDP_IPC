@@ -56,6 +56,9 @@ class DistributedProcess(object):
                                 self.reduction_data = self.decode_protocol(data[1:])
                                 self.logger.info(f"Reduction Data : \n{self.reduction_data}")
                                 conn.send(b"1")
+                            elif data[0:1] == b'3':
+                                s.close()
+                                sys.exit()
         except Exception as e:
             self.logger.error(f"Exception: {traceback.format_exc()}")
 
